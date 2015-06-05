@@ -1,16 +1,13 @@
-function handleCapture(canvas) {
-  console.log("Handling capture!");
-  return canvas.toDataURL('png');
-};
-
 function requestCapture(seed) {
   console.log("Requesting capture");
   if (window.hasOwnProperty('SolarNWInterface')) {
-    window.SolarNWInterface.requestCapture({ seed: seed }, handleCapture);
+    window.SolarNWInterface.requestCaptureSync({ seed: seed });
     return "Done!";
   } else {
     return "SolarNWInterface not found!";
   }
 };
 
-requestCapture(5);
+var thing = requestCapture(5);
+
+thing;

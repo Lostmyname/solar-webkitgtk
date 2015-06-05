@@ -1,13 +1,18 @@
 #include <stdio.h>
 #include <JavaScriptCore/JSStringRef.h>
 #include <JavaScriptCore/JSValueRef.h>
+#include <cairo.h>
 #include <gtk/gtk.h>
 #include <webkit2/webkit2.h>
 
 static void destroyWindowCb(GtkWidget* widget, GtkWidget* window);
 static gboolean closeWebViewCb(WebKitWebView* web_view, GtkWidget* window);
 
-static void get_javascript_result(GObject *object, GAsyncResult *result, gpointer user_data) {
+static void get_javascript_result(
+    GObject *object,
+    GAsyncResult *result,
+    gpointer user_data)
+{
   g_printf("Here? Surely?\n");
   WebKitJavascriptResult *js_result;
   JSValueRef              value;
@@ -66,7 +71,8 @@ static void get_javascript_result(GObject *object, GAsyncResult *result, gpointe
   webkit_javascript_result_unref (js_result);
 }
 
-static gchar* load_javascript(gchar *file_name) {
+static gchar* load_javascript(gchar *file_name)
+{
   FILE *script_file;
   gchar *script_value;
 
@@ -79,7 +85,8 @@ static gchar* load_javascript(gchar *file_name) {
   return script_value;
 }
 
-static void run_some_javascript(WebKitWebView *web_view) {
+static void run_capture_javascript(WebKitWebView *web_view)
+{
   gchar script[2000];
   gchar *file_name = "script/request_capture.js";
   FILE *script_file = fopen(file_name, "r");
@@ -97,8 +104,30 @@ static void run_some_javascript(WebKitWebView *web_view) {
   webkit_web_view_run_javascript(web_view, script, NULL, get_javascript_result, NULL);
 }
 
-static void
-load_status_cb (WebKitWebView *web_view, WebKitLoadEvent load_event, gpointer user_data) {
+static void save_webview_to_png(WebKitWebView *web_view)
+{
+  GtkWidget *widget = GTK_WIDGET(web_view);
+  GtkAllocation allocation;
+
+  gtk_widget_get_allocation(widget, &allocation);
+  cairo_surface_t *surface = cairo_image_surface_create(
+      CAIRO_FORMAT_ARGB32,
+      1.0 * allocation.width,
+      1.0 * allocation.height
+  );
+
+  cairo_t *cr = cairo_create(surface);
+  gtk_widget_draw(widget, cr);
+  cairo_surface_write_to_png(surface, "something.png");
+  cairo_destroy(cr);
+  cairo_surface_destroy(surface);
+}
+
+static void load_status_cb(
+    WebKitWebView *web_view,
+    WebKitLoadEvent load_event,
+    gpointer user_data)
+{
   switch (load_event) {
     case WEBKIT_LOAD_STARTED:
       g_printf("Started load\n");
@@ -110,12 +139,21 @@ load_status_cb (WebKitWebView *web_view, WebKitLoadEvent load_event, gpointer us
       g_printf("Load committed\n");
       break;
     case WEBKIT_LOAD_FINISHED:
-      run_some_javascript(web_view);
       g_printf("Load finished!\n");
+      sleep(2);
+      g_printf("Running capture JS\n");
+      run_capture_javascript(web_view);
   }
 }
 
+gboolean button_click_cb(WebKitWebView *web_view, GdkEvent *event, gpointer user_data)
+{
+  g_printf("Button clicked!\n");
+  g_printf("Saving webview\n");
+  save_webview_to_png(web_view);
 
+  return FALSE;
+}
 
 int main(int argc, char* argv[])
 {
@@ -130,7 +168,11 @@ int main(int argc, char* argv[])
 
     // Create an 800x600 window that will contain the browser instance
     GtkWidget *main_window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
-    gtk_window_set_default_size(GTK_WINDOW(main_window), 800, 600);
+    /* gtk_window_set_default_size(GTK_WINDOW(main_window), 7205, 2598); */
+    gtk_window_set_default_size(GTK_WINDOW(main_window), 7205, 2598);
+    gtk_window_set_decorated(GTK_WINDOW(main_window), FALSE);
+    gtk_widget_set_size_request(main_window, 7205, 2598);
+    gtk_window_set_resizable(GTK_WINDOW(main_window), FALSE);
 
     // Create a browser instance
     WebKitWebView *web_view = WEBKIT_WEB_VIEW(webkit_web_view_new());
@@ -139,12 +181,14 @@ int main(int argc, char* argv[])
     gtk_container_add(GTK_CONTAINER(main_window), GTK_WIDGET(web_view));
 
     g_object_set(webkit_web_view_get_settings(web_view), "enable-webgl", TRUE, NULL);
+    g_object_set(webkit_web_view_get_settings(web_view), "enable-write-console-messages-to-stdout", TRUE, NULL);
 
     // Set up callbacks so that if either the main window or the browser instance is
     // closed, the program will exit
     g_signal_connect(main_window, "destroy", G_CALLBACK(destroyWindowCb), NULL);
     g_signal_connect(web_view, "close", G_CALLBACK(closeWebViewCb), main_window);
     g_signal_connect(web_view, "load-changed", G_CALLBACK(load_status_cb), NULL);
+    g_signal_connect(web_view, "button-press-event", G_CALLBACK(button_click_cb), NULL);
 
     // Load a web page into the browser instance
     webkit_web_view_load_uri(web_view, uri);
